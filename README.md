@@ -1,0 +1,2 @@
+# Cervical_Cancer_Causal_Analysis
+In the past decade, cervical cancer has been a really serious public health issue. According to WHO, almost all cervical cancer cases (99%) are linked to infection with high-risk human papillomaviruses (HPV), an extremely common virus transmitted through sexual contact. Hence, in this project, I want to find the STD(Sexual Transmitted Disease) related and sexual behavior related causing factors of the cervical cancer.  
