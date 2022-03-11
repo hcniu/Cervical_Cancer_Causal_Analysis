@@ -1,0 +1,374 @@
+---
+title: "Cervical Cancer Causal Analysis"
+author: "Haochun Niu"
+date: "3/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(gridExtra)
+library(dplyr)
+library(ggplot2)
+library(MatchIt)
+library(tidyverse)
+```
+
+## 1. Problem Statement
+In the past decade, cervical cancer has been a really serious public health issue. According to WHO, almost all cervical cancer cases (99%) are linked to infection with high-risk human papillomaviruses (HPV), an extremely common virus transmitted through sexual contact. Hence, in this project, I want to find the STD(Sexual Transmitted Disease) related and sexual behavior related causing factors of the cervical cancer.  
+The dataset was a public dataset from UCI and was collected at 'Hospital Universitario de Caracas' in Caracas, Venezuela. The dataset comprises demographic information, habits, and historic medical records of 858 patients. Several patients decided not to answer some of the questions because of privacy concerns (missing values).
+
+```{r echo=FALSE, warning=FALSE}
+setwd("~/Desktop/Kaggle Compatition/Cervial Cancer Causal Analysis")
+df<-read_csv('risk_factors_cervical_cancer.csv')
+```
+
+## 2.Hypothesis
+
+In this section, I first list out the 4 hypotheses I would like to verify via this dataset.  
+
+a. **The more sexual partners the more likely to get cervical cancer.**  
+b. **Patients with any kinds of STDs are more likely to get cervial cancer.**  
+c. **Patients who smoke are more likely to get cervial cancer.**  
+d. **The patients who are taking Hormonal Contraceptives are more likely to get cervical cancer.**
+
+## 3.Data Describtion
+In the original dataset, there are totally 32 different independent variables and 4 dependent variables. The 32 independent variables could be roughly divided into 4 categories, **demographic variable**, **sexual & smoking activity**, and **STD medical history**.
+
+-----------------------------------------------------------------------------------------------------------------------------------
+Category         |Variable Name             |Data Type  |Definition                                                |Variable Type
+:-----------------|:------------------------------|:-------------|:----------------------------------------------------|:---------------
+Target           |Hinselmann                |Boolean    |Hinselmann medical test result for cervical cancer        | y
+Target           |Schiller                  |Boolean    |Schiller medical test result for cervical cancer          | y
+Target           |Citology                  |Boolean    |Citology medical test result for cervical cancer          | y
+Target           |Biopsy                    |Boolean    |Biopsy medical test result for cervical cancer            | y
+Demographic      |Age                       |Int        |Age of the patient                                        | x
+Sexual Activity  |Number of sexual partners |Int        |Number of sexual partners                                 | x
+Sexual Activity  |First intercourse (age)   |Int        |Age when first sexual intercourse happen                  | x
+Sexual Activity  |Num of pregnancies        |Int        |Number of pregnancies                                     | x
+Smoking Activity |Smokes                    |Boolean    |Patient smoke or not                                      | x
+Smoking Activity |Smokes (packs/year)       |Int        |Patient smokes how many packs of cigarette a year         | x
+Sexual Activity  |Hormonal Contraceptives   |Boolean    |Patient taking cormonal contraceptives or not             | x
+Sexual Activity  |Hormonal Contraceptives (years) |Int  |Patient taking cormonal contraceptives for how many years | x
+Sexual Activity  |IUD                       |Boolean    |Patient using IUD or not                                  | x
+Sexual Activity  |IUD (years)               |Int        |Patient using IUD for how many years                      | x
+STD Medical History |STDs                   |Boolean    |Patient was infected any kind of STD or not               | x
+STD Medical History |STDs (number)          |Int        |Patient was infected how many kinds of STD                | x
+STD Medical History |STDs:condylomatosis    |Boolean    |Patient was infected condylomatosis or not                | x
+STD Medical History |STDs:cervical condylomatosis |Boolean |Patient was infected cervical condylomatosis or not    | x
+STD Medical History |STDs:vaginal condylomatosis |Boolean |Patient was infected vaginal condylomatosis or not      | x
+STD Medical History |STDs:vulvo-perineal condylomatosis |Boolean |Patient was infected vulvo-perineal condylomatosis or not    | x
+STD Medical History |STDs:syphilis          |Boolean    |Patient was infected syphilis or not                      | x
+STD Medical History |STDs:pelvic inflammatory disease |Boolean |Patient was infected pelvic inflammatory disease or not | x
+STD Medical History |STDs:genital herpes    |Boolean    |Patient was infected genital herpes or not                | x
+STD Medical History |STDs:molluscum contagiosum |Boolean |Patient was infected molluscum contagiosum or not        | x
+STD Medical History |STDs:AIDS              |Boolean    |Patient was infected AIDS or not                          | x
+STD Medical History |STDs:HIV               |Boolean    |Patient was infected HIV or not                           | x
+STD Medical History |STDs:HIV               |Boolean    |Patient was infected HIV or not                           | x
+STD Medical History |STDs:Hepatitis B       |Boolean    |Patient was infected Hepatitis B or not                   | x
+STD Medical History |STDs:HPV               |Boolean    |Patient was infected HPV or not                           | x
+STD Medical History |STDs: Number of diagnosis |Int     |Patient was diagnosed STDs how many times                 | x
+STD Medical History |STDs: Time since first diagnosis |Int     |Time since patient was first diagnosed STD         | x
+STD Medical History |STDs: Time since last diagnosis  |Int     |Time since patient was last diagnosed STD          | x
+STD Medical History |Dx:Cancer              |Boolean    |Not sure                                                  | x
+STD Medical History |Dx:CIN                 |Boolean    |Not sure                                                  | x
+STD Medical History |Dx:HPV                 |Boolean    |Not sure                                                  | x
+STD Medical History |Dx                     |Boolean    |Not sure                                                  | x
+
+According to different papers, I find that **the Hinselmann test generally had the highest accuracy**. Hence, in this project, I will use Hinselmann test's result as cervical cancer diagnosis result. In addition, given that some patients are not willing to reveal their information about STD and sexual activity, I will **remove those rows with NAs in STD columns and Hormonal Contraceptives column**. Eventually, there will be **726 rows** left in the dataframe.
+
+```{r echo=T}
+df<-df%>%select(-c(Schiller,Citology,Biopsy))
+df[df=='?']<-NA
+for(i in 1:ncol(df)){
+df[i]<-apply(df[,i],1,as.numeric)}
+df<-df%>%drop_na(c(`Hormonal Contraceptives`,`Number of sexual partners`,STDs))
+```
+
+## 4. Data Cleaning
+Within the dataset, there are still NA values in different columns. For differen columns, I use different methods to fillin the NA values. 
+
+a. **First sexual intercourse: Given that the distribution is bell-shaped, I'll fillin the NAs with mean.**  
+b. **Num of pregnancies: Given that the distribution is skewed, I'll fillin the NAs with medium.**  
+c. **Smokes: Given that only 15 percent of patient is smoking, I'll fillin the NAs with 0 (non-smoking).**  
+d. **Smokes (years): Given that only 15 percent of patient is smoking, I'll fillin the NAs with 0.**  
+e. **Smokes (packs/year): Given that only 15 percent of patient is smoking, I'll fillin the NAs with 0.**  
+f. **IUD: Given that most patients do not use IUD, I'll fillin the NAs with 0 (not-using).**  
+g. **IUD (years):  Given that most patients do not use IUD, I'll fillin the NAs with 0.**  
+h. **STDs Time since first diagnosis: Given that most of the data in this column is unknown, I'll drop this column.**  
+i. **STDs Time since last diagnosis: Given that most of the data in this column is unknown, I'll drop this column.**  
+
+```{r echo=T}
+df$`First sexual intercourse`<-ifelse(is.na(df$`First sexual intercourse`),mean(df$`First sexual intercourse`,na.rm = T),df$`First sexual intercourse`)
+df$`Num of pregnancies`<-ifelse(is.na(df$`Num of pregnancies`),median(df$`Num of pregnancies`,na.rm = T),df$`Num of pregnancies`)
+df$Smokes<-ifelse(is.na(df$Smokes),0,df$Smokes)
+df$`Smokes (years)`<-ifelse(is.na(df$`Smokes (years)`),0,df$`Smokes (years)`)
+df$`Smokes (packs/year)`<-ifelse(is.na(df$`Smokes (packs/year)`),0,df$`Smokes (packs/year)`)
+df$IUD<-ifelse(is.na(df$IUD),0,df$IUD)
+df$`IUD (years)`<-ifelse(is.na(df$`IUD (years)`),0,df$`IUD (years)`)
+df<-df%>%select(-c(`STDs: Time since first diagnosis`,`STDs: Time since last diagnosis`))
+```
+```{r echo=F}
+index=c(5,8,10,12,14,15,16,17,18,19,20,21,22,23,24,25,27,28,29,30,31)
+for(i in index){
+df[i]<-apply(df[,i],1,as.factor)}
+```
+
+## 5. EDA & Vizualization  
+In order to understand the dataset more, I vizualize the data and create a dashboard, using Tableau. You can access the dashboard via this link. (https://public.tableau.com/views/CervialCancerCausalAnalysisEDA/Dashboard1?:language=en-US&publish=yes&:display_count=n&:origin=viz_share_link) After visualization, I find several interesting results related to my hypothesis.
+
+a. **The patients with STDs have much higher percentage of getting cervical cancer than those with no STDs.**
+b. **The patients using hormonal contraceptives also have higher percentage of getting cervical cancer.**
+c. **Smoking seems to have small effect on getting cervical cancer.**
+d. **The number of sexual partners seems to have no effect on getting cervical cancer.**
+
+## Hypothesis1: The more sexual partners the more likely to get cervical cancer.  
+Accorgin to the result of EDA, I define having **more than 2 sexual partners** as more sexual partners and equal or less than 2 sexual partners as normal. In the case, **patients having more than 2 sexual partners will be in the treatment group**, vice versa.
+
+In order to conclude causality, there are four important sources of endogenety needed to check.
+  
+a. **Selection Bias**: The data within this dataset is collected from around 900 random patinents in a hospital in Venezuela. Yet, because this is the only data available to me right now, I strongly assume that the data is globally representative.  
+b. **Simultaneity**: According to common sense, I assume there's no simultaneity effect in this case.  
+c. **Mis-Measurement**: All the Xs are measured correctly and perfectly with medical experts.  
+d. **Omitted Variables**: I use the propensity score matching techniques to solve the omitted variables issue. 
+
+### (a) Propensity Score Matcing
+With caliper=0.01 and ratio=1, totally **182 samples( 44% of Control Group, 58% of Treatment Group )** are matched. In addition according to the plots below, the matched data indeed has similar distribtuion.
+
+```{r echo=T}
+#Create the treatment variable
+tem<-df
+tem$Treatment<-ifelse(tem$`Number of sexual partners`>2,1,0)
+tem$Treatment<-as.factor(tem$Treatment)
+tem<-tem%>%select(-`Number of sexual partners`)
+
+#Matching
+match_output <- matchit(Treatment ~ Age+`First sexual intercourse`+`Num of pregnancies`+Smokes+`Smokes (years)`+`Smokes (packs/year)`+`Hormonal Contraceptives`+`Hormonal Contraceptives (years)`+`IUD (years)`+STDs+`STDs (number)`+`STDs:condylomatosis`+`STDs:vaginal condylomatosis`+`STDs:vulvo-perineal condylomatosis`+`STDs:syphilis`+`STDs:pelvic inflammatory disease`+`STDs:genital herpes`+`STDs:molluscum contagiosum`+`STDs:HIV`+`STDs:Hepatitis B`+`STDs:HPV`+`STDs: Number of diagnosis`+`Dx:Cancer`+`Dx:CIN`+`Dx:HPV`+Dx,
+                        data = tem,
+                        method = "nearest",
+                        distance = "logit",
+                        caliper = 0.01,
+                        replace = FALSE,
+                        ratio = 1)
+match_data=match.data(match_output)
+result<-summary(match_output)
+print(result$nn)
+```
+```{r echo=F}
+#Visualization check with several variables
+model<-glm(Treatment~Age,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt1<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=Treatment,color=Treatment))+
+  theme_bw()+
+  labs(title = 'Propensity Score on Age',x='Probability')
+
+model<-glm(Treatment~`Hormonal Contraceptives (years)`,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt2<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=Treatment,color=Treatment))+
+  theme_bw()+
+  labs(title = 'Propensity Score on \nHormonal Contraceptives (years)',x='Probability')
+grid.arrange(plt1, plt2, ncol = 2) 
+```
+
+### (b) T-test 
+Using t-test, I will verfiy whether the treatment group indeed has a higher cervical cancer probability than the treatment group.
+```{r echo=F}
+match_data$Hinselmann<-as.numeric(match_data$Hinselmann)-1
+match_treat<-filter(match_data,Treatment==1)
+s_treat<-sum(match_treat$Hinselmann)
+match_control<-filter(match_data,Treatment!=1)
+s_control<-sum(match_control$Hinselmann)
+prop.test(x=c(s_treat,s_control),n=c(nrow(match_treat),nrow(match_control)),alternative = 'greater',conf.level = 0.9)
+```
+
+### (c) Conclusion 
+Given that the data eventually does not pass the test (P-value>0.05), I am not able to conclude that the treatment group indeed has a higher probability of getting cervial cancer. Therefore, I can not conclude that having more than 2 sexual partners is causing the patient to receive cervical cancer.
+
+## Hypothesis2: Patients with any kinds of STDs are more likely to get cervial cancer..  
+In this scenerio, patients **who have at least one STDs** will be in the **treatment group**, and the rest of the patients will be in the control group.
+
+In order to conclude causality, there are four important sources of endogenety needed to check.
+  
+a. **Selection Bias**: The data within this dataset is collected from around 900 random patinents in a hospital in Venezuela. Yet, because this is the only data available to me right now, I strongly assume that the data is globally representative.  
+b. **Simultaneity**: According to common sense, I assume there's no simultaneity effect in this case.  
+c. **Mis-Measurement**: All the Xs are measured correctly and perfectly with medical experts.  
+d. **Omitted Variables**: I use the propensity score matching techniques to solve the omitted variables issue. 
+
+### (a) Propensity Score Matcing
+With caliper=0.05 and ratio=1, totally **65 samples( 9.93% of Control Group, 90.3% of Treatment Group )** are matched. However, in this scenerio, the matching is not as good as the previous hypothesis, especially in age.
+
+```{r echo=T}
+#Create the treatment variable
+tem<-df
+
+#Matching
+match_output <- matchit(STDs ~ Age+`First sexual intercourse`+`Num of pregnancies`+Smokes+`Smokes (years)`+`Smokes (packs/year)`+`Hormonal Contraceptives`+`Hormonal Contraceptives (years)`+`IUD (years)`+`Number of sexual partners`+`Dx:Cancer`+`Dx:CIN`+`Dx:HPV`+Dx,
+                        data = tem,
+                        method = "nearest",
+                        distance = "logit",
+                        caliper = 0.05,
+                        replace = FALSE,
+                        ratio = 1)
+match_data=match.data(match_output)
+result<-summary(match_output)
+print(result$nn)
+```
+```{r echo=F}
+#Visualization check with several variables
+model<-glm(STDs~Age,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt1<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=STDs,color=STDs))+
+  theme_bw()+
+  labs(title = 'Propensity Score on Age',x='Probability')
+
+model<-glm(STDs~`Hormonal Contraceptives (years)`,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt2<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=STDs,color=STDs))+
+  theme_bw()+
+  labs(title = 'Propensity Score on \nHormonal Contraceptives (years)',x='Probability')
+grid.arrange(plt1, plt2, ncol = 2) 
+```
+
+### (b) T-test 
+Using t-test, I will verfiy whether the treatment group indeed has a higher cervical cancer probability than the treatment group.
+```{r echo=F}
+match_data$Hinselmann<-as.numeric(match_data$Hinselmann)-1
+match_treat<-filter(match_data,STDs==1)
+s_treat<-sum(match_treat$Hinselmann)
+match_control<-filter(match_data,STDs!=1)
+s_control<-sum(match_control$Hinselmann)
+prop.test(x=c(s_treat,s_control),n=c(nrow(match_treat),nrow(match_control)),alternative = 'greater',conf.level = 0.9)
+```
+
+### (c) Conclusion 
+Given that the data eventually does not pass the test (P-value>0.05), I am not able to conclude that the treatment group indeed has a higher probability of getting cervial cancer. Therefore, I can not conclude that having STDs is causing the patient to receive cervical cancer.
+
+## Hypothesis3: Smoking seems to have small effect on getting cervical cancer.
+In this scenerio, patients **who smoke** will be in the **treatment group**, and the rest of the patients will be in the control group.
+
+In order to conclude causality, there are four important sources of endogenety needed to check.
+  
+a. **Selection Bias**: The data within this dataset is collected from around 900 random patinents in a hospital in Venezuela. Yet, because this is the only data available to me right now, I strongly assume that the data is globally representative.  
+b. **Simultaneity**: According to common sense, I assume there's no simultaneity effect in this case.  
+c. **Mis-Measurement**: All the Xs are measured correctly and perfectly with medical experts.  
+d. **Omitted Variables**: I use the propensity score matching techniques to solve the omitted variables issue. 
+
+### (a) Propensity Score Matcing
+With caliper=0.05 and ratio=1, totally **90 samples( 14.5% of Control Group, 86.5% of Treatment Group )** are matched. In addition according to the plots below, the matched data indeed has similar distribtuion.
+
+```{r echo=T}
+#Create the treatment variable
+tem<-df
+
+#Matching
+match_output <- matchit(Smokes ~ Age+`First sexual intercourse`+`Num of pregnancies`+`Number of sexual partners`+`Hormonal Contraceptives`+`Hormonal Contraceptives (years)`+`IUD (years)`+STDs+`STDs (number)`+`STDs:condylomatosis`+`STDs:vaginal condylomatosis`+`STDs:vulvo-perineal condylomatosis`+`STDs:syphilis`+`STDs:pelvic inflammatory disease`+`STDs:genital herpes`+`STDs:molluscum contagiosum`+`STDs:HIV`+`STDs:Hepatitis B`+`STDs:HPV`+`STDs: Number of diagnosis`+`Dx:Cancer`+`Dx:CIN`+`Dx:HPV`+Dx,
+                        data = tem,
+                        method = "nearest",
+                        distance = "logit",
+                        caliper = 0.05,
+                        replace = FALSE,
+                        ratio = 1)
+match_data=match.data(match_output)
+result<-summary(match_output)
+print(result$nn)
+```
+```{r echo=F}
+#Visualization check with several variables
+model<-glm(Smokes~Age,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt1<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=Smokes,color=Smokes))+
+  theme_bw()+
+  labs(title = 'Propensity Score on Age',x='Probability')
+
+model<-glm(Smokes~`Hormonal Contraceptives (years)`,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt2<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=Smokes,color=Smokes))+
+  theme_bw()+
+  labs(title = 'Propensity Score on \nHormonal Contraceptives (years)',x='Probability')
+grid.arrange(plt1, plt2, ncol = 2)
+```
+
+### (b) T-test 
+Using t-test, I will verfiy whether the treatment group indeed has a higher cervical cancer probability than the treatment group.
+```{r echo=F}
+match_data$Hinselmann<-as.numeric(match_data$Hinselmann)-1
+match_treat<-filter(match_data,Smokes==1)
+s_treat<-sum(match_treat$Hinselmann)
+match_control<-filter(match_data,Smokes!=1)
+s_control<-sum(match_control$Hinselmann)
+prop.test(x=c(s_treat,s_control),n=c(nrow(match_treat),nrow(match_control)),alternative = 'greater',conf.level = 0.9)
+```
+
+### (c) Conclusion 
+Given that the data eventually does not pass the test (P-value>0.05), I am not able to conclude that the treatment group indeed has a higher probability of getting cervial cancer. Therefore, I can not conclude that smoking is causing the patient to receive cervical cancer.
+
+## Hypothesis4: The patients who are taking Hormonal Contraceptives are more likely to get cervical cancer..  
+In this scenerio, patients **who use Hormonal Contraceptives** will be in the **treatment group**, and the rest of the patients will be in the control group.
+
+In order to conclude causality, there are four important sources of endogenety needed to check.
+  
+a. **Selection Bias**: The data within this dataset is collected from around 900 random patinents in a hospital in Venezuela. Yet, because this is the only data available to me right now, I strongly assume that the data is globally representative.  
+b. **Simultaneity**: According to common sense, I assume there's no simultaneity effect in this case.  
+c. **Mis-Measurement**: All the Xs are measured correctly and perfectly with medical experts.  
+d. **Omitted Variables**: I use the propensity score matching techniques to solve the omitted variables issue. 
+
+### (a) Propensity Score Matcing
+With caliper=0.05 and ratio=1, totally **237 samples( 90.4% of Control Group, 51% of Treatment Group )** are matched. In addition according to the plots below, the matched data indeed has similar distribtuion.
+
+```{r echo=T}
+#Create the treatment variable
+tem<-df
+
+#Matching
+match_output <- matchit(`Hormonal Contraceptives`~ Age+`First sexual intercourse`+`Num of pregnancies`+`Number of sexual partners`+Smokes+`Smokes (years)`+`Smokes (packs/year)`+`IUD (years)`+STDs+`STDs (number)`+`STDs:condylomatosis`+`STDs:vaginal condylomatosis`+`STDs:vulvo-perineal condylomatosis`+`STDs:syphilis`+`STDs:pelvic inflammatory disease`+`STDs:genital herpes`+`STDs:molluscum contagiosum`+`STDs:HIV`+`STDs:Hepatitis B`+`STDs:HPV`+`STDs: Number of diagnosis`+`Dx:Cancer`+`Dx:CIN`+`Dx:HPV`+Dx,
+                        data = tem,
+                        method = "nearest",
+                        distance = "logit",
+                        caliper = 0.05,
+                        replace = FALSE,
+                        ratio = 1)
+match_data=match.data(match_output)
+result<-summary(match_output)
+print(result$nn)
+```
+```{r echo=F}
+#Visualization check with several variables
+model<-glm(`Hormonal Contraceptives`~Age,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt1<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=`Hormonal Contraceptives`,color=`Hormonal Contraceptives`))+
+  theme_bw()+
+  labs(title = 'Propensity Score on Age',x='Probability',color='Hormonal\nContraceptives')
+
+model<-glm(`Hormonal Contraceptives`~`Smokes (years)`,data = match_data,family = 'binomial')
+match_data$fitted_values<-model$fitted.values
+plt2<-ggplot(data = match_data)+
+  geom_density(aes(x=fitted_values,group=`Hormonal Contraceptives`,color=`Hormonal Contraceptives`))+
+  theme_bw()+
+  labs(title = 'Propensity Score on Smoke (years)',x='Probability',color='Hormonal\nContraceptives')
+grid.arrange(plt1, plt2, ncol = 2) 
+```
+
+### (b) T-test 
+Using t-test, I will verfiy whether the treatment group indeed has a higher cervical cancer probability than the treatment group.
+```{r echo=F}
+match_data$Hinselmann<-as.numeric(match_data$Hinselmann)-1
+match_treat<-filter(match_data,`Hormonal Contraceptives`==1)
+s_treat<-sum(match_treat$Hinselmann)
+match_control<-filter(match_data,`Hormonal Contraceptives`!=1)
+s_control<-sum(match_control$Hinselmann)
+prop.test(x=c(s_treat,s_control),n=c(nrow(match_treat),nrow(match_control)),alternative = 'greater',conf.level = 0.9)
+```
+
+### (c) Conclusion 
+Given that the data eventually does not pass the test (P-value>0.05), I am not able to conclude that the treatment group indeed has a higher probability of getting cervial cancer. Therefore, I can not conclude that using hormonal contraceptives is causing the patient to receive cervical cancer.
+
+## Summary & Limitation
+Eventually, all 4 hypotheses do not pass. Hence, I am not able to conclude any causality. Yet, I suspect the failure of all four hypothesis is because of **the extreme small sample size**. I sincerely believe that if **the sample size is larger and with more statistic power**, some of the hypothesis might pass.  
+In addition, in this project, I make some strong assumptions about the endogeneity. Therefore, while interpreting the results, we need to extra cautious about the limitations.
